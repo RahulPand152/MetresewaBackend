@@ -9,85 +9,293 @@ datasource db {
   provider = "postgresql"
 }
 
-// ── Enums ────────────────────────────────────────────────────────────
-
+// ================= ENUMS =================
 enum Role {
   USER
-  TECHNICIAN
   ADMIN
+  TECHNICIAN
 }
 
 enum BookingStatus {
   PENDING
-  CONFIRMED
+  ASSIGNED
   IN_PROGRESS
   COMPLETED
   CANCELLED
 }
 
-// ── Models ───────────────────────────────────────────────────────────
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
 
+enum ContactStatus {
+  NEW
+  REVIEWED
+  CLOSED
+}
+
+enum NotificationType {
+  BOOKING_CREATED
+  BOOKING_ASSIGNED
+  PAYMENT_SUCCESS
+  MESSAGE_RECEIVED
+}
+
+// ================= USER =================
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  phone     String?
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(uuid())
 
-  bookings Booking[]
+  firstName       String
+  lastName        String
+  avatar          String?
 
-  @@map("users")
+  email           String   @unique
+  phoneNumber     String?  @unique
+  password        String
+
+  address         String?
+
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  otp                  String?
+  otpExpires           DateTime?
+  otpPurpose           String?
+
+  isEmailVerified      Boolean  @default(false)
+
+  role            Role     @default(USER)
+
+  accounts        Account[]
+  sessions        Session[]
+
+  bookings        Booking[]
+  payments        Payment[]
+
+  reviews         Review[]
+
+  notifications   Notification[]
+
+  messagesSent    Message[] @relation("MessageSender")
+  messagesRcvd    Message[] @relation("MessageReceiver")
+
+  technician      Technician?
+  admin           Admin?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
+// ================= TECHNICIAN =================
 model Technician {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String
-  password       String
-  phone          String?
-  specialization String?
-  available      Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  userId          String   @unique
 
-  bookings Booking[]
+  profilePicture  String?
+  experience      Int?
+  bio             String?
 
-  @@map("technicians")
+  skills          String?
+  certification   String?
+
+  rating          Float    @default(0)
+
+  isAvailable     Boolean  @default(true)
+  isApproved      Boolean  @default(false)
+
+  user            User     @relation(fields: [userId], references: [id])
+
+  specializations Specialization[]
+
+  bookings        Booking[] @relation("TechnicianBookings")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
+// ================= ADMIN =================
+model Admin {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+// ================= SERVICE =================
 model Service {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
+
   name        String
   description String?
-  price       Float
-  category    String?
+  price       Float?
+
+  bookings    Booking[]
+
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  bookings Booking[]
-
-  @@map("services")
 }
 
+// ================= SPECIALIZATION =================
+model Specialization {
+  id          String       @id @default(uuid())
+  name        String       @unique
+
+  technicians Technician[]
+}
+
+// ================= BOOKING =================
 model Booking {
-  id        String        @id @default(cuid())
-  status    BookingStatus @default(PENDING)
-  date      DateTime
-  notes     String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id              String   @id @default(uuid())
 
+  userId          String
+  serviceId       String
+
+  description     String?
+  status          BookingStatus @default(PENDING)
+
+  scheduledDate   DateTime
+
+  assignedByAdmin Boolean  @default(false)
+
+  user            User    @relation(fields: [userId], references: [id])
+  service         Service @relation(fields: [serviceId], references: [id])
+
+  technicians     Technician[] @relation("TechnicianBookings")
+
+  payment         Payment?
+  messages        Message[]
+  reviews         Review[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ================= PAYMENT =================
+model Payment {
+  id              String   @id @default(uuid())
+
+  userId          String
+  bookingId       String   @unique
+
+  amount          Float
+  status          PaymentStatus @default(PENDING)
+
+  paymentMethod   String
+  transactionId   String?
+
+  user            User    @relation(fields: [userId], references: [id])
+  booking         Booking @relation(fields: [bookingId], references: [id])
+
+  createdAt       DateTime @default(now())
+}
+
+// ================= REVIEW =================
+model Review {
+  id          String   @id @default(uuid())
+
+  userId      String
+  bookingId   String
+
+  rating      Int
+  comment     String?
+
+  user        User    @relation(fields: [userId], references: [id])
+  booking     Booking @relation(fields: [bookingId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+// ================= CONTACT / FEEDBACK =================
+model ContactMessage {
+  id          String   @id @default(uuid())
+
+  fullName    String
+  email       String
+  phone       String?
+
+  title       String
+  message     String
+
+  status      ContactStatus @default(NEW)
+
+  adminNotes  String?
+
+  createdAt   DateTime @default(now())
+}
+
+// ================= MESSAGE =================
+model Message {
+  id            String   @id @default(uuid())
+
+  senderId      String
+  receiverId    String
+  bookingId     String
+
+  subject       String?
+  content       String
+
+  sender        User    @relation("MessageSender", fields: [senderId], references: [id])
+  receiver      User    @relation("MessageReceiver", fields: [receiverId], references: [id])
+  booking       Booking @relation(fields: [bookingId], references: [id])
+
+  createdAt     DateTime @default(now())
+}
+
+// ================= NOTIFICATIONS =================
+model Notification {
+  id        String   @id @default(uuid())
+
+  userId    String
+  type      NotificationType
+  message   String
+
+  isRead    Boolean  @default(false)
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// ================= NEXTAUTH =================
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
   userId       String
-  user         User       @relation(fields: [userId], references: [id])
+  expires      DateTime
 
-  technicianId String?
-  technician   Technician? @relation(fields: [technicianId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  serviceId    String
-  service      Service    @relation(fields: [serviceId], references: [id])
+  @@map("sessions")
+}
 
-  @@map("bookings")
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
