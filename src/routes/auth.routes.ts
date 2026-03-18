@@ -12,6 +12,7 @@ router.post("/technician-register", validate(technicianRegisterSchema), authCont
 router.post("/login", validate(loginSchema), authController.login);
 router.post("/forgot-password", validate(requestPasswordResetSchema), authController.requestPasswordReset);
 router.post("/verify-registration-otp", validate(verifyOTPSchema), authController.verifyRegistrationOTP);
+router.post("/verify-otp", validate(verifyOTPSchema), authController.verifyOTP);
 router.post("/reset-password", validate(resetPasswordSchema), authController.resetPassword);
 
 // ── Protected Routes ─────────────────────────────────────────────────
