@@ -70,29 +70,33 @@ export const registerTechnician = asyncHandler(
         const otp = generateOTP();
         const otpExpires = generateOTPExpiration();
 
-        const user = await prisma.user.create({
-            data: {
-                firstName: data.firstName,
-                lastName: data.lastName,
-                email: data.email,
-                password: hashedPassword,
-                phoneNumber: data.phoneNumber,
-                address: data.address,
-                role: "TECHNICIAN",
-                otp,
-                otpExpires,
-                otpPurpose: "registration",
-            },
-        });
+        const user = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    email: data.email,
+                    password: hashedPassword,
+                    phoneNumber: data.phoneNumber,
+                    address: data.address,
+                    role: "TECHNICIAN",
+                    otp,
+                    otpExpires,
+                    otpPurpose: "registration",
+                },
+            });
 
-        await prisma.technician.create({
-            data: {
-                userId: user.id,
-                bio: data.bio,
-                experience: data.experience,
-                skills: data.skills,
-                certification: data.certification,
-            },
+            await tx.technician.create({
+                data: {
+                    userId: newUser.id,
+                    bio: data.bio,
+                    experience: data.experience,
+                    skills: data.skills,
+                    certification: data.certification,
+                },
+            });
+
+            return newUser;
         });
 
         await sendOTPEmail(user.email, otp, "registration");
