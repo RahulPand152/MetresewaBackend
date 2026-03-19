@@ -115,6 +115,8 @@ export const getAllTechnicians = asyncHandler(
                         lastName: true,
                         email: true,
                         phoneNumber: true,
+                        avatar: true,
+                        address: true,
                     },
                 },
                 specializations: true,
@@ -122,6 +124,48 @@ export const getAllTechnicians = asyncHandler(
             orderBy: { createdAt: "desc" },
         });
         sendSuccess(res, technicians, "Technicians retrieved");
+    },
+);
+
+// ── Get All Users ────────────────────────────────────────────────────
+export const getAllUsers = asyncHandler(
+    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
+        const users = await prisma.user.findMany({
+            where: { role: "USER" },
+            include: {
+                _count: {
+                    select: { bookings: true }
+                }
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        sendSuccess(res, users, "Users retrieved");
+    },
+);
+
+// ── Delete User ──────────────────────────────────────────────────────
+export const deleteUser = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const userId = req.params.userId as string;
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            throw new AppError("User not found", 404, true, "NOT_FOUND");
+        }
+
+        // Delete all related records to avoid foreign key constraint errors
+        await prisma.$transaction([
+            prisma.notification.deleteMany({ where: { userId: userId } }),
+            prisma.review.deleteMany({ where: { userId: userId } }),
+            prisma.payment.deleteMany({ where: { userId: userId } }),
+            prisma.message.deleteMany({ where: { senderId: userId } }),
+            prisma.message.deleteMany({ where: { receiverId: userId } }),
+            prisma.booking.deleteMany({ where: { userId: userId } }),
+            prisma.technician.deleteMany({ where: { userId: userId } }),
+            prisma.admin.deleteMany({ where: { userId: userId } }),
+            prisma.user.delete({ where: { id: userId } })
+        ]);
+
+        sendSuccess(res, null, "User deleted successfully");
     },
 );
 
@@ -290,4 +334,56 @@ export const getDashboardStats = asyncHandler(
 
         sendSuccess(res, stats, "Dashboard stats retrieved");
     },
+);
+
+// ── Analytics ────────────────────────────────────────────────────────
+export const getAnalytics = asyncHandler(
+    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
+        // Bookings by status
+        const bookingsStatusGroups = await prisma.booking.groupBy({
+            by: ['status'],
+            _count: {
+                _all: true
+            }
+        });
+
+        const bookingsByStatus = bookingsStatusGroups.reduce((acc, curr) => {
+            acc[curr.status] = curr._count._all;
+            return acc;
+        }, {} as Record<string, number>);
+
+        // For monthly data, fetch from the last 6 months
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        const recentUsers = await prisma.user.findMany({
+            where: { createdAt: { gte: sixMonthsAgo } },
+            select: { createdAt: true }
+        });
+
+        const usersByMonth: Record<string, number> = {};
+        recentUsers.forEach(user => {
+            const month = user.createdAt.toLocaleString('default', { month: 'short' });
+            usersByMonth[month] = (usersByMonth[month] || 0) + 1;
+        });
+
+        const recentPayments = await prisma.payment.findMany({
+            where: { createdAt: { gte: sixMonthsAgo }, status: "PAID" },
+            select: { createdAt: true, amount: true }
+        });
+
+        const revenueByMonth: Record<string, number> = {};
+        recentPayments.forEach(payment => {
+            const month = payment.createdAt.toLocaleString('default', { month: 'short' });
+            revenueByMonth[month] = (revenueByMonth[month] || 0) + payment.amount;
+        });
+
+        const analytics = {
+            bookingsByStatus,
+            usersByMonth,
+            revenueByMonth
+        };
+
+        sendSuccess(res, analytics, "Analytics retrieved");
+    }
 );

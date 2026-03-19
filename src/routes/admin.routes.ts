@@ -10,13 +10,18 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize("ADMIN"));
 
-// ── Dashboard ────────────────────────────────────────────────────────
+// ── Dashboard & Analytics ────────────────────────────────────────────────
 router.get("/dashboard", adminController.getDashboardStats);
+router.get("/analytics", adminController.getAnalytics);
 
 // ── Technician Management ────────────────────────────────────────────
 router.get("/technicians", adminController.getAllTechnicians);
 router.patch("/technicians/:technicianId/approve", adminController.approveTechnician);
 router.post("/assign-technician", validate(assignTechnicianSchema), adminController.assignTechnician);
+
+// ── User Management ──────────────────────────────────────────────────
+router.get("/users", adminController.getAllUsers);
+router.delete("/users/:userId", adminController.deleteUser);
 
 // ── Service Management ───────────────────────────────────────────────
 router.get("/services", adminController.getAllServices);

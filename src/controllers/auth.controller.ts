@@ -85,7 +85,6 @@ export const registerTechnician = asyncHandler(
                     otpPurpose: "registration",
                 },
             });
-
             await tx.technician.create({
                 data: {
                     userId: newUser.id,
