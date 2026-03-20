@@ -4,6 +4,445 @@ import { asyncHandler, AppError } from "../middleware/errorhandle.js";
 import { sendSuccess, sendPaginated } from "../utils/apiResponse.js";
 import { prisma } from "../config/database.js";
 import { sendTechnicianAssignment, sendContactReply } from "../services/email.service.js";
+import { uploadImage, deleteImage } from "../services/cloudinary.service.js";
+
+// ─────────────────────────────────────────────────────────────────────
+//  CATEGORY CRUD
+// ─────────────────────────────────────────────────────────────────────
+
+// ── Get All Categories ───────────────────────────────────────────────
+export const getAllCategories = asyncHandler(
+    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categories = await prisma.category.findMany({
+            include: {
+                _count: { select: { subCategories: true, services: true } },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        sendSuccess(res, categories, "Categories retrieved");
+    },
+);
+
+// ── Get Category By Id ───────────────────────────────────────────────
+export const getCategoryById = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categoryId = req.params.categoryId as string;
+        const category = await prisma.category.findUnique({
+            where: { id: categoryId },
+            include: {
+                subCategories: {
+                    include: { images: true },
+                    orderBy: { createdAt: "desc" },
+                },
+                _count: { select: { services: true } },
+            },
+        });
+        if (!category) throw new AppError("Category not found", 404, true, "NOT_FOUND");
+        sendSuccess(res, category, "Category retrieved");
+    },
+);
+
+// ── Create Category ──────────────────────────────────────────────────
+export const createCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { name, description, isActive } = req.body;
+
+        let icon: string | undefined;
+        let iconPublicId: string | undefined;
+
+        // Upload icon if provided
+        if (req.file) {
+            const result = await uploadImage(req.file.buffer, "metro-sewa/categories");
+            icon = result.url;
+            iconPublicId = result.publicId;
+        }
+
+        const category = await prisma.category.create({
+            data: {
+                name,
+                description,
+                isActive: isActive === "true" || isActive === true ? true : true,
+                icon,
+                iconPublicId,
+            },
+        });
+
+        sendSuccess(res, category, "Category created", 201);
+    },
+);
+
+// ── Update Category ──────────────────────────────────────────────────
+export const updateCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categoryId = req.params.categoryId as string;
+        const { name, description, isActive } = req.body;
+
+        const existing = await prisma.category.findUnique({ where: { id: categoryId } });
+        if (!existing) throw new AppError("Category not found", 404, true, "NOT_FOUND");
+
+        let icon = existing.icon ?? undefined;
+        let iconPublicId = existing.iconPublicId ?? undefined;
+
+        // Replace icon if new file uploaded
+        if (req.file) {
+            if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
+            const result = await uploadImage(req.file.buffer, "metro-sewa/categories");
+            icon = result.url;
+            iconPublicId = result.publicId;
+        }
+
+        const updated = await prisma.category.update({
+            where: { id: categoryId },
+            data: {
+                ...(name && { name }),
+                ...(description !== undefined && { description }),
+                ...(isActive !== undefined && { isActive: isActive === "true" || isActive === true }),
+                icon,
+                iconPublicId,
+            },
+        });
+
+        sendSuccess(res, updated, "Category updated");
+    },
+);
+
+// ── Delete Category ──────────────────────────────────────────────────
+export const deleteCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categoryId = req.params.categoryId as string;
+        const existing = await prisma.category.findUnique({
+            where: { id: categoryId },
+            include: { subCategories: { include: { images: true } } },
+        });
+        if (!existing) throw new AppError("Category not found", 404, true, "NOT_FOUND");
+
+        // Delete all subcategory images from Cloudinary
+        for (const sub of existing.subCategories) {
+            if (sub.iconPublicId) await deleteImage(sub.iconPublicId);
+            for (const img of sub.images) await deleteImage(img.publicId);
+        }
+
+        // Delete category icon from Cloudinary
+        if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
+
+        await prisma.category.delete({ where: { id: categoryId } });
+        sendSuccess(res, null, "Category deleted");
+    },
+);
+
+// ─────────────────────────────────────────────────────────────────────
+//  SUBCATEGORY CRUD
+// ─────────────────────────────────────────────────────────────────────
+
+// ── Get SubCategories (optionally by category) ───────────────────────
+export const getAllSubCategories = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categoryId = req.query.categoryId as string | undefined;
+        const subCategories = await prisma.subCategory.findMany({
+            where: categoryId ? { categoryId: categoryId as string } : undefined,
+            include: {
+                images: true,
+                category: { select: { id: true, name: true } },
+                _count: { select: { services: true } },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        sendSuccess(res, subCategories, "SubCategories retrieved");
+    },
+);
+
+// ── Get SubCategories by Category (path param) ───────────────────────
+export const getSubCategoriesByCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const categoryId = req.params.categoryId as string;
+        const category = await prisma.category.findUnique({ where: { id: categoryId } });
+        if (!category) throw new AppError("Category not found", 404, true, "NOT_FOUND");
+
+        const subCategories = await prisma.subCategory.findMany({
+            where: { categoryId },
+            include: { images: true, _count: { select: { services: true } } },
+            orderBy: { createdAt: "desc" },
+        });
+        sendSuccess(res, subCategories, "SubCategories retrieved");
+    },
+);
+
+// ── Create SubCategory ───────────────────────────────────────────────
+export const createSubCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { categoryId, name, description, isActive } = req.body;
+
+        const category = await prisma.category.findUnique({ where: { id: categoryId } });
+        if (!category) throw new AppError("Category not found", 404, true, "NOT_FOUND");
+
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+
+        // Single icon
+        let icon: string | undefined;
+        let iconPublicId: string | undefined;
+        if (files?.["icon"]?.[0]) {
+            const result = await uploadImage(files["icon"][0].buffer, "metro-sewa/subcategories/icons");
+            icon = result.url;
+            iconPublicId = result.publicId;
+        }
+
+        // Multiple extra images
+        const extraImages: { url: string; publicId: string }[] = [];
+        if (files?.["images"]) {
+            for (const file of files["images"]) {
+                const result = await uploadImage(file.buffer, "metro-sewa/subcategories/images");
+                extraImages.push({ url: result.url, publicId: result.publicId });
+            }
+        }
+
+        const subCategory = await prisma.subCategory.create({
+            data: {
+                categoryId,
+                name,
+                description,
+                isActive: isActive === "true" || isActive === true ? true : true,
+                icon,
+                iconPublicId,
+                images: {
+                    create: extraImages,
+                },
+            },
+            include: { images: true },
+        });
+
+        sendSuccess(res, subCategory, "SubCategory created", 201);
+    },
+);
+
+// ── Update SubCategory ───────────────────────────────────────────────
+export const updateSubCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const subCategoryId = req.params.subCategoryId as string;
+        const { categoryId, name, description, isActive, removeImageIds } = req.body;
+
+        const existing = await prisma.subCategory.findUnique({
+            where: { id: subCategoryId },
+            include: { images: true },
+        });
+        if (!existing) throw new AppError("SubCategory not found", 404, true, "NOT_FOUND");
+
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+
+        // Replace icon if uploaded
+        let icon = existing.icon ?? undefined;
+        let iconPublicId = existing.iconPublicId ?? undefined;
+        if (files?.["icon"]?.[0]) {
+            if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
+            const result = await uploadImage(files["icon"][0].buffer, "metro-sewa/subcategories/icons");
+            icon = result.url;
+            iconPublicId = result.publicId;
+        }
+
+        // Remove specific extra images if requested
+        if (removeImageIds) {
+            const ids: string[] = Array.isArray(removeImageIds) ? removeImageIds : [removeImageIds];
+            const toDelete = existing.images.filter((img) => ids.includes(img.id));
+            for (const img of toDelete) await deleteImage(img.publicId);
+            await prisma.subCategoryImage.deleteMany({ where: { id: { in: ids } } });
+        }
+
+        // Append new extra images
+        const extraImages: { url: string; publicId: string }[] = [];
+        if (files?.["images"]) {
+            for (const file of files["images"]) {
+                const result = await uploadImage(file.buffer, "metro-sewa/subcategories/images");
+                extraImages.push({ url: result.url, publicId: result.publicId });
+            }
+        }
+
+        const updated = await prisma.subCategory.update({
+            where: { id: subCategoryId },
+            data: {
+                ...(categoryId && { categoryId }),
+                ...(name && { name }),
+                ...(description !== undefined && { description }),
+                ...(isActive !== undefined && { isActive: isActive === "true" || isActive === true }),
+                icon,
+                iconPublicId,
+                ...(extraImages.length > 0 && { images: { create: extraImages } }),
+            },
+            include: { images: true },
+        });
+
+        sendSuccess(res, updated, "SubCategory updated");
+    },
+);
+
+// ── Delete SubCategory ───────────────────────────────────────────────
+export const deleteSubCategory = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const subCategoryId = req.params.subCategoryId as string;
+        const existing = await prisma.subCategory.findUnique({
+            where: { id: subCategoryId },
+            include: { images: true },
+        });
+        if (!existing) throw new AppError("SubCategory not found", 404, true, "NOT_FOUND");
+
+        // Delete all images from Cloudinary
+        if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
+        for (const img of existing.images) await deleteImage(img.publicId);
+
+        await prisma.subCategory.delete({ where: { id: subCategoryId } });
+        sendSuccess(res, null, "SubCategory deleted");
+    },
+);
+
+// ─────────────────────────────────────────────────────────────────────
+//  SERVICE CRUD (updated with category + images)
+// ─────────────────────────────────────────────────────────────────────
+
+// ── Get All Services ─────────────────────────────────────────────────
+export const getAllServices = asyncHandler(
+    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
+        const services = await prisma.service.findMany({
+            include: {
+                images: true,
+                category: { select: { id: true, name: true, icon: true } },
+                subCategory: { select: { id: true, name: true, icon: true } },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        sendSuccess(res, services, "Services retrieved");
+    },
+);
+
+// ── Get Service By Id ────────────────────────────────────────────────
+export const getServiceById = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const serviceId = req.params.serviceId as string;
+        const service = await prisma.service.findUnique({
+            where: { id: serviceId },
+            include: {
+                images: true,
+                category: { select: { id: true, name: true, icon: true } },
+                subCategory: { select: { id: true, name: true, icon: true } },
+            },
+        });
+        if (!service) throw new AppError("Service not found", 404, true, "NOT_FOUND");
+        sendSuccess(res, service, "Service retrieved");
+    },
+);
+
+// ── Create Service ───────────────────────────────────────────────────
+export const createService = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { name, description, price, categoryId, subCategoryId, isActive } = req.body;
+
+        // Upload multiple images if provided
+        const files = req.files as Express.Multer.File[] | undefined;
+        const serviceImages: { url: string; publicId: string; isMain: boolean }[] = [];
+
+        if (files && files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                const result = await uploadImage(files[i].buffer, "metro-sewa/services");
+                serviceImages.push({ url: result.url, publicId: result.publicId, isMain: i === 0 });
+            }
+        }
+
+        const service = await prisma.service.create({
+            data: {
+                name,
+                description,
+                price: price ? Number(price) : undefined,
+                categoryId: categoryId || undefined,
+                subCategoryId: subCategoryId || undefined,
+                isActive: isActive === "true" || isActive === true ? true : true,
+                images: { create: serviceImages },
+            },
+            include: {
+                images: true,
+                category: { select: { id: true, name: true, icon: true } },
+                subCategory: { select: { id: true, name: true, icon: true } },
+            },
+        });
+
+        sendSuccess(res, service, "Service created", 201);
+    },
+);
+
+// ── Update Service ───────────────────────────────────────────────────
+export const updateService = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const serviceId = req.params.serviceId as string;
+        const { name, description, price, categoryId, subCategoryId, isActive, removeImageIds } = req.body;
+
+        const existing = await prisma.service.findUnique({
+            where: { id: serviceId },
+            include: { images: true },
+        });
+        if (!existing) throw new AppError("Service not found", 404, true, "NOT_FOUND");
+
+        // Remove selected images
+        if (removeImageIds) {
+            const ids: string[] = Array.isArray(removeImageIds) ? removeImageIds : [removeImageIds];
+            const toDelete = existing.images.filter((img) => ids.includes(img.id));
+            for (const img of toDelete) await deleteImage(img.publicId);
+            await prisma.serviceImage.deleteMany({ where: { id: { in: ids } } });
+        }
+
+        // Append new images
+        const files = req.files as Express.Multer.File[] | undefined;
+        const newImages: { url: string; publicId: string; isMain: boolean }[] = [];
+        const remainingImages = existing.images.filter(
+            (img) => !Array.isArray(removeImageIds) ? removeImageIds !== img.id : !removeImageIds?.includes(img.id)
+        );
+
+        if (files && files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                const result = await uploadImage(files[i].buffer, "metro-sewa/services");
+                // Mark as main if no existing images remain
+                newImages.push({ url: result.url, publicId: result.publicId, isMain: remainingImages.length === 0 && i === 0 });
+            }
+        }
+
+        const updated = await prisma.service.update({
+            where: { id: serviceId },
+            data: {
+                ...(name && { name }),
+                ...(description !== undefined && { description }),
+                ...(price !== undefined && price !== "" && { price: Number(price) }),
+                ...(categoryId !== undefined && { categoryId: categoryId || null }),
+                ...(subCategoryId !== undefined && { subCategoryId: subCategoryId || null }),
+                ...(isActive !== undefined && { isActive: isActive === "true" || isActive === true }),
+                ...(newImages.length > 0 && { images: { create: newImages } }),
+            },
+            include: {
+                images: true,
+                category: { select: { id: true, name: true, icon: true } },
+                subCategory: { select: { id: true, name: true, icon: true } },
+            },
+        });
+
+        sendSuccess(res, updated, "Service updated");
+    },
+);
+
+// ── Delete Service ───────────────────────────────────────────────────
+export const deleteService = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const serviceId = req.params.serviceId as string;
+        const existing = await prisma.service.findUnique({
+            where: { id: serviceId },
+            include: { images: true },
+        });
+        if (!existing) throw new AppError("Service not found", 404, true, "NOT_FOUND");
+
+        // Delete all images from Cloudinary
+        for (const img of existing.images) await deleteImage(img.publicId);
+
+        await prisma.service.delete({ where: { id: serviceId } });
+        sendSuccess(res, null, "Service deleted");
+    },
+);
+
+// ─────────────────────────────────────────────────────────────────────
+//  TECHNICIAN MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────
 
 // ── Assign Technician ────────────────────────────────────────────────
 export const assignTechnician = asyncHandler(
@@ -127,6 +566,10 @@ export const getAllTechnicians = asyncHandler(
     },
 );
 
+// ─────────────────────────────────────────────────────────────────────
+//  USER MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────
+
 // ── Get All Users ────────────────────────────────────────────────────
 export const getAllUsers = asyncHandler(
     async (_req: AuthRequest, res: Response, _next: NextFunction) => {
@@ -169,6 +612,10 @@ export const deleteUser = asyncHandler(
     },
 );
 
+// ─────────────────────────────────────────────────────────────────────
+//  BOOKINGS / PAYMENTS / CONTACTS
+// ─────────────────────────────────────────────────────────────────────
+
 // ── Get All Bookings ─────────────────────────────────────────────────
 export const getAllBookings = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
@@ -182,7 +629,7 @@ export const getAllBookings = asyncHandler(
                 take: limit,
                 include: {
                     user: { select: { id: true, firstName: true, lastName: true, email: true } },
-                    service: true,
+                    service: { include: { images: true, category: { select: { id: true, name: true } } } },
                     technicians: {
                         include: {
                             user: { select: { firstName: true, lastName: true } },
@@ -257,49 +704,9 @@ export const replyContact = asyncHandler(
     },
 );
 
-// ── Create Service ───────────────────────────────────────────────────
-export const createService = asyncHandler(
-    async (req: AuthRequest, res: Response, _next: NextFunction) => {
-        const service = await prisma.service.create({ data: req.body });
-        sendSuccess(res, service, "Service created", 201);
-    },
-);
-
-// ── Update Service ───────────────────────────────────────────────────
-export const updateService = asyncHandler(
-    async (req: AuthRequest, res: Response, _next: NextFunction) => {
-        const serviceId = req.params.serviceId as string;
-        const service = await prisma.service.findUnique({ where: { id: serviceId } });
-        if (!service) {
-            throw new AppError("Service not found", 404, true, "NOT_FOUND");
-        }
-
-        const updated = await prisma.service.update({ where: { id: serviceId }, data: req.body });
-        sendSuccess(res, updated, "Service updated");
-    },
-);
-
-// ── Delete Service ───────────────────────────────────────────────────
-export const deleteService = asyncHandler(
-    async (req: AuthRequest, res: Response, _next: NextFunction) => {
-        const serviceId = req.params.serviceId as string;
-        const service = await prisma.service.findUnique({ where: { id: serviceId } });
-        if (!service) {
-            throw new AppError("Service not found", 404, true, "NOT_FOUND");
-        }
-
-        await prisma.service.delete({ where: { id: serviceId } });
-        sendSuccess(res, null, "Service deleted");
-    },
-);
-
-// ── Get All Services ─────────────────────────────────────────────────
-export const getAllServices = asyncHandler(
-    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
-        const services = await prisma.service.findMany({ orderBy: { createdAt: "desc" } });
-        sendSuccess(res, services, "Services retrieved");
-    },
-);
+// ─────────────────────────────────────────────────────────────────────
+//  DASHBOARD & ANALYTICS
+// ─────────────────────────────────────────────────────────────────────
 
 // ── Dashboard Stats ──────────────────────────────────────────────────
 export const getDashboardStats = asyncHandler(
@@ -311,6 +718,8 @@ export const getDashboardStats = asyncHandler(
             pendingBookings,
             completedBookings,
             totalRevenueAgg,
+            totalCategories,
+            totalServices,
         ] = await Promise.all([
             prisma.user.count({ where: { role: "USER" } }),
             prisma.technician.count(),
@@ -321,6 +730,8 @@ export const getDashboardStats = asyncHandler(
                 _sum: { amount: true },
                 where: { status: "PAID" },
             }),
+            prisma.category.count(),
+            prisma.service.count(),
         ]);
 
         const stats = {
@@ -330,6 +741,8 @@ export const getDashboardStats = asyncHandler(
             pendingBookings,
             completedBookings,
             totalRevenue: totalRevenueAgg._sum.amount || 0,
+            totalCategories,
+            totalServices,
         };
 
         sendSuccess(res, stats, "Dashboard stats retrieved");
@@ -341,49 +754,63 @@ export const getAnalytics = asyncHandler(
     async (_req: AuthRequest, res: Response, _next: NextFunction) => {
         // Bookings by status
         const bookingsStatusGroups = await prisma.booking.groupBy({
-            by: ['status'],
-            _count: {
-                _all: true
-            }
+            by: ["status"],
+            _count: { _all: true },
         });
 
-        const bookingsByStatus = bookingsStatusGroups.reduce((acc, curr) => {
-            acc[curr.status] = curr._count._all;
-            return acc;
-        }, {} as Record<string, number>);
+        const bookingsByStatus = bookingsStatusGroups.reduce(
+            (acc, curr) => {
+                acc[curr.status] = curr._count._all;
+                return acc;
+            },
+            {} as Record<string, number>,
+        );
 
-        // For monthly data, fetch from the last 6 months
+        // Last 6 months
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        const recentUsers = await prisma.user.findMany({
-            where: { createdAt: { gte: sixMonthsAgo } },
-            select: { createdAt: true }
-        });
+        const [recentUsers, recentPayments] = await Promise.all([
+            prisma.user.findMany({
+                where: { createdAt: { gte: sixMonthsAgo } },
+                select: { createdAt: true },
+            }),
+            prisma.payment.findMany({
+                where: { createdAt: { gte: sixMonthsAgo }, status: "PAID" },
+                select: { createdAt: true, amount: true },
+            }),
+        ]);
 
         const usersByMonth: Record<string, number> = {};
-        recentUsers.forEach(user => {
-            const month = user.createdAt.toLocaleString('default', { month: 'short' });
+        recentUsers.forEach((user) => {
+            const month = user.createdAt.toLocaleString("default", { month: "short" });
             usersByMonth[month] = (usersByMonth[month] || 0) + 1;
         });
 
-        const recentPayments = await prisma.payment.findMany({
-            where: { createdAt: { gte: sixMonthsAgo }, status: "PAID" },
-            select: { createdAt: true, amount: true }
+        const revenueByMonth: Record<string, number> = {};
+        recentPayments.forEach((payment) => {
+            const month = payment.createdAt.toLocaleString("default", { month: "short" });
+            revenueByMonth[month] = (revenueByMonth[month] || 0) + payment.amount;
         });
 
-        const revenueByMonth: Record<string, number> = {};
-        recentPayments.forEach(payment => {
-            const month = payment.createdAt.toLocaleString('default', { month: 'short' });
-            revenueByMonth[month] = (revenueByMonth[month] || 0) + payment.amount;
+        // Services grouped by category
+        const servicesByCategory = await prisma.category.findMany({
+            select: {
+                name: true,
+                _count: { select: { services: true } },
+            },
         });
 
         const analytics = {
             bookingsByStatus,
             usersByMonth,
-            revenueByMonth
+            revenueByMonth,
+            servicesByCategory: servicesByCategory.map((c) => ({
+                category: c.name,
+                count: c._count.services,
+            })),
         };
 
         sendSuccess(res, analytics, "Analytics retrieved");
-    }
+    },
 );

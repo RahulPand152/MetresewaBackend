@@ -71,17 +71,51 @@ export const createReviewSchema = z.object({
     comment: z.string().optional(),
 });
 
+// ── Category Schemas ─────────────────────────────────────────────────
+export const createCategorySchema = z.object({
+    name: z.string().min(2, "Category name is required"),
+    description: z.string().optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
+});
+
+export const updateCategorySchema = z.object({
+    name: z.string().min(2).optional(),
+    description: z.string().optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
+});
+
+// ── SubCategory Schemas ──────────────────────────────────────────────
+export const createSubCategorySchema = z.object({
+    categoryId: z.string().uuid("Invalid category ID"),
+    name: z.string().min(2, "SubCategory name is required"),
+    description: z.string().optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
+});
+
+export const updateSubCategorySchema = z.object({
+    categoryId: z.string().uuid("Invalid category ID").optional(),
+    name: z.string().min(2).optional(),
+    description: z.string().optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
+});
+
 // ── Service Schema ───────────────────────────────────────────────────
 export const createServiceSchema = z.object({
     name: z.string().min(2, "Service name is required"),
     description: z.string().optional(),
-    price: z.number().positive("Price must be positive").optional(),
+    price: z.preprocess((v) => (v !== undefined && v !== "" ? Number(v) : undefined), z.number().positive("Price must be positive").optional()),
+    categoryId: z.string().uuid("Invalid category ID").optional(),
+    subCategoryId: z.string().uuid("Invalid subcategory ID").optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
 });
 
 export const updateServiceSchema = z.object({
     name: z.string().min(2).optional(),
     description: z.string().optional(),
-    price: z.number().positive().optional(),
+    price: z.preprocess((v) => (v !== undefined && v !== "" ? Number(v) : undefined), z.number().positive().optional()),
+    categoryId: z.string().uuid("Invalid category ID").optional(),
+    subCategoryId: z.string().uuid("Invalid subcategory ID").optional(),
+    isActive: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional(),
 });
 
 // ── Contact Schema ───────────────────────────────────────────────────
