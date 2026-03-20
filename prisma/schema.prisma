@@ -125,17 +125,103 @@ model Admin {
   createdAt   DateTime @default(now())
 }
 
+// ================= CATEGORY =================
+model Category {
+  id             String        @id @default(uuid())
+
+  name           String        @unique
+  description    String?
+
+  // Single icon image (Cloudinary)
+  icon           String?
+  iconPublicId   String?
+
+  isActive       Boolean       @default(true)
+
+  subCategories  SubCategory[]
+  services       Service[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// ================= SUBCATEGORY =================
+model SubCategory {
+  id             String             @id @default(uuid())
+
+  categoryId     String
+  category       Category           @relation(fields: [categoryId], references: [id])
+
+  name           String
+  description    String?
+
+  // Single icon image (Cloudinary)
+  icon           String?
+  iconPublicId   String?
+
+  isActive       Boolean            @default(true)
+
+  // Optional additional images
+  images         SubCategoryImage[]
+
+  services       Service[]
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+// ================= SUBCATEGORY IMAGE =================
+model SubCategoryImage {
+  id             String      @id @default(uuid())
+
+  subCategoryId  String
+  subCategory    SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  url            String
+  publicId       String
+
+  createdAt      DateTime    @default(now())
+}
+
 // ================= SERVICE =================
 model Service {
-  id          String   @id @default(uuid())
+  id             String         @id @default(uuid())
 
-  name        String
-  description String?
-  price       Float?
+  name           String
+  description    String?
+  price          Float?
 
-  bookings    Booking[]
+  // Category / SubCategory links (optional)
+  categoryId     String?
+  category       Category?      @relation(fields: [categoryId], references: [id])
 
-  createdAt   DateTime @default(now())
+  subCategoryId  String?
+  subCategory    SubCategory?   @relation(fields: [subCategoryId], references: [id])
+
+  isActive       Boolean        @default(true)
+
+  // Multiple images (Cloudinary)
+  images         ServiceImage[]
+
+  bookings       Booking[]
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+// ================= SERVICE IMAGE =================
+model ServiceImage {
+  id        String   @id @default(uuid())
+
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id])
+
+  url       String
+  publicId  String
+
+  isMain    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
 }
 
 // ================= SPECIALIZATION =================

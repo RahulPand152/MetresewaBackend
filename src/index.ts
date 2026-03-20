@@ -15,6 +15,7 @@ import technicianRoutes from "./routes/technician.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
+import publicRoutes from "./routes/public.routes.js";
 
 dotenv.config();
 const app = express();
@@ -63,6 +64,7 @@ app.use("/api/technicians", technicianRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/public", publicRoutes);
 
 // ── Error Handling (must be after routes) ────────────────────────────
 app.use(notFoundHandler);
@@ -76,6 +78,17 @@ async function main() {
         console.log(`Metro-Sewa backend is running on http://localhost:${PORT}`);
     });
 }
+
+// ── Graceful Shutdown ────────────────────────────────────────────────
+process.on("SIGINT", async () => {
+    await disconnectDatabase();
+    process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+    await disconnectDatabase();
+    process.exit(0);
+});
 
 // ── Graceful Shutdown ────────────────────────────────────────────────
 process.on("SIGINT", async () => {
