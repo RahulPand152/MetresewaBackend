@@ -92,6 +92,7 @@ router.put(
     validate(updateServiceSchema),
     adminController.updateService,
 );
+router.patch("/services/:serviceId/toggle", adminController.toggleService);
 router.delete("/services/:serviceId", adminController.deleteService);
 
 // ── Bookings ──────────────────────────────────────────────────────────

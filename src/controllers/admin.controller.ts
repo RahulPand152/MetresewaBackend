@@ -45,16 +45,19 @@ export const getCategoryById = asyncHandler(
 // ── Create Category ──────────────────────────────────────────────────
 export const createCategory = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
-        const { name, description, isActive } = req.body;
+        const { name, description, isActive, iconLabel } = req.body;
 
         let icon: string | undefined;
         let iconPublicId: string | undefined;
 
-        // Upload icon if provided
         if (req.file) {
+            // Upload image if provided
             const result = await uploadImage(req.file.buffer, "metro-sewa/categories");
             icon = result.url;
             iconPublicId = result.publicId;
+        } else if (iconLabel) {
+            // Use the selected icon label (e.g. "Wrench") as the icon value
+            icon = iconLabel;
         }
 
         const category = await prisma.category.create({
@@ -75,7 +78,7 @@ export const createCategory = asyncHandler(
 export const updateCategory = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
         const categoryId = req.params.categoryId as string;
-        const { name, description, isActive } = req.body;
+        const { name, description, isActive, iconLabel, removeImage } = req.body;
 
         const existing = await prisma.category.findUnique({ where: { id: categoryId } });
         if (!existing) throw new AppError("Category not found", 404, true, "NOT_FOUND");
@@ -83,12 +86,24 @@ export const updateCategory = asyncHandler(
         let icon = existing.icon ?? undefined;
         let iconPublicId = existing.iconPublicId ?? undefined;
 
-        // Replace icon if new file uploaded
         if (req.file) {
+            // New image file uploaded — delete old image (if any) and upload new
             if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
             const result = await uploadImage(req.file.buffer, "metro-sewa/categories");
             icon = result.url;
             iconPublicId = result.publicId;
+        } else if (removeImage === "true") {
+            // User explicitly removed the image — clear it from Cloudinary and DB
+            if (existing.iconPublicId) await deleteImage(existing.iconPublicId);
+            icon = iconLabel ?? undefined;   // fall back to the selected icon label
+            iconPublicId = undefined;
+        } else if (iconLabel !== undefined) {
+            // No file, no removal — just update the icon label (selected icon grid)
+            // Only update if the current icon is not a URL (i.e. it's a label name)
+            const currentIsUrl = existing.icon?.startsWith("http");
+            if (!currentIsUrl) {
+                icon = iconLabel;
+            }
         }
 
         const updated = await prisma.category.update({
@@ -97,8 +112,8 @@ export const updateCategory = asyncHandler(
                 ...(name && { name }),
                 ...(description !== undefined && { description }),
                 ...(isActive !== undefined && { isActive: isActive === "true" || isActive === true }),
-                icon,
-                iconPublicId,
+                icon: icon ?? null,
+                iconPublicId: iconPublicId ?? null,
             },
         });
 
@@ -437,6 +452,27 @@ export const deleteService = asyncHandler(
 
         await prisma.service.delete({ where: { id: serviceId } });
         sendSuccess(res, null, "Service deleted");
+    },
+);
+
+// ── Toggle Service Active/Inactive ───────────────────────────────────
+export const toggleService = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const serviceId = req.params.serviceId as string;
+        const existing = await prisma.service.findUnique({ where: { id: serviceId } });
+        if (!existing) throw new AppError("Service not found", 404, true, "NOT_FOUND");
+
+        const updated = await prisma.service.update({
+            where: { id: serviceId },
+            data: { isActive: !existing.isActive },
+            include: {
+                images: true,
+                category: { select: { id: true, name: true, icon: true } },
+                subCategory: { select: { id: true, name: true, icon: true } },
+            },
+        });
+
+        sendSuccess(res, updated, `Service ${updated.isActive ? "activated" : "deactivated"}`);
     },
 );
 
