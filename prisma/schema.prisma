@@ -294,7 +294,7 @@ model Review {
   createdAt   DateTime @default(now())
 }
 
-// ================= CONTACT / FEEDBACK =================
+// = CONTACT / FEEDBACK 
 model ContactMessage {
   id          String   @id @default(uuid())
 
