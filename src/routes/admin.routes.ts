@@ -12,6 +12,7 @@ import {
     updateCategorySchema,
     createSubCategorySchema,
     updateSubCategorySchema,
+    updateBookingStatusSchema,
 } from "../utils/validation.js";
 import * as adminController from "../controllers/admin.controller.js";
 
@@ -97,6 +98,7 @@ router.delete("/services/:serviceId", adminController.deleteService);
 
 // ── Bookings ──────────────────────────────────────────────────────────
 router.get("/bookings", adminController.getAllBookings);
+router.patch("/bookings/:bookingId/status", validate(updateBookingStatusSchema), adminController.updateBookingStatus);
 
 // ── Payments ──────────────────────────────────────────────────────────
 router.get("/payments", adminController.getAllPayments);

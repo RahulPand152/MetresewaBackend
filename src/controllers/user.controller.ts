@@ -104,12 +104,15 @@ export const getMyBookings = asyncHandler(
         const bookings = await prisma.booking.findMany({
             where: { userId: req.user!.id },
             include: {
-                service: true,
+                service: {
+                    include: { category: { select: { name: true } } }
+                },
                 technicians: {
                     include: {
                         user: { select: { firstName: true, lastName: true } },
                     },
                 },
+                payment: true,
             },
             orderBy: { createdAt: "desc" },
         });

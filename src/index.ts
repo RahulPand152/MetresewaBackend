@@ -16,6 +16,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
 import publicRoutes from "./routes/public.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
 
 dotenv.config();
 const app = express();
@@ -65,6 +66,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/payment", paymentRoutes);
 
 // ── Error Handling (must be after routes) ────────────────────────────
 app.use(notFoundHandler);

@@ -671,6 +671,7 @@ export const getAllBookings = asyncHandler(
                             user: { select: { firstName: true, lastName: true } },
                         },
                     },
+                    payment: true,
                 },
                 orderBy: { createdAt: "desc" },
             }),
@@ -850,3 +851,22 @@ export const getAnalytics = asyncHandler(
         sendSuccess(res, analytics, "Analytics retrieved");
     },
 );
+
+// -- Update Booking Status ---------------------------------------------
+export const updateBookingStatus = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+          const bookingId = req.params.bookingId as string;
+        const { status } = req.body;
+
+        const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+        if (!booking) throw new AppError("Booking not found", 404, true, "NOT_FOUND");
+
+        const updated = await prisma.booking.update({
+            where: { id: bookingId },
+            data: { status },
+        });
+
+        sendSuccess(res, updated, "Booking status updated");
+    }
+);
+

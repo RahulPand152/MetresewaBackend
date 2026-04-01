@@ -55,9 +55,9 @@ export const resetPasswordSchema = z.object({
 
 // ── Booking Schemas ──────────────────────────────────────────────────
 export const createBookingSchema = z.object({
-    serviceId: z.string().uuid("Invalid service ID"),
+    serviceId: z.string().min(1, "Invalid service ID"),
     description: z.string().optional(),
-    scheduledDate: z.string().datetime("Invalid date format"),
+    scheduledDate: z.string().datetime("Invalid date format").or(z.string()),
 });
 
 export const updateBookingStatusSchema = z.object({

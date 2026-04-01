@@ -38,6 +38,7 @@
     "@react-email/components": "^1.0.9",
     "@react-email/render": "^2.0.4",
     "@types/jsonwebtoken": "^9.0.10",
+    "axios": "^1.14.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",
     "cors": "^2.8.6",

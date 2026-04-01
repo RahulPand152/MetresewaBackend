@@ -15,7 +15,7 @@ const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || "admin@metrosewa.com";
 const DEFAULT_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || "password123";
 
 async function main() {
-    console.log("🌱 Starting Metro Sewa database seed...");
+    console.log(" Starting Metro Sewa database seed...");
 
     // ── Hash password for all seed users ─────────────────────────────
     const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 12);
