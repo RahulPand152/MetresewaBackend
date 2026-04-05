@@ -66,7 +66,8 @@ export const updateBookingStatusSchema = z.object({
 
 // ── Review Schema ────────────────────────────────────────────────────
 export const createReviewSchema = z.object({
-    bookingId: z.string().uuid("Invalid booking ID"),
+    serviceId: z.string().uuid("Invalid service ID"),
+    bookingId: z.string().optional().or(z.literal("")),
     rating: z.number().int().min(1).max(5),
     comment: z.string().optional(),
 });
