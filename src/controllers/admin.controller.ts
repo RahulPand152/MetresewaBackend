@@ -441,16 +441,40 @@ export const updateService = asyncHandler(
 export const deleteService = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
         const serviceId = req.params.serviceId as string;
+
         const existing = await prisma.service.findUnique({
             where: { id: serviceId },
-            include: { images: true },
+            include: {
+                images: true,
+                bookings: { select: { id: true } },
+            },
         });
         if (!existing) throw new AppError("Service not found", 404, true, "NOT_FOUND");
 
-        // Delete all images from Cloudinary
-        for (const img of existing.images) await deleteImage(img.publicId);
+        const bookingIds = existing.bookings.map((b) => b.id);
 
+        if (bookingIds.length > 0) {
+            // Step 1: Clear the implicit Technician<->Booking many-to-many join table.
+            // Prisma's implicit m2m table "_TechnicianBookings" has column "A" = bookingId, "B" = technicianId.
+            // Without this, deleting bookings fails with a FK constraint on the join table.
+            for (const bid of bookingIds) {
+                await prisma.$executeRaw`DELETE FROM "_TechnicianBookings" WHERE "A" = ${bid}`;
+            }
+
+            // Step 2: Delete booking children, then the bookings themselves
+            await prisma.$transaction([
+                prisma.message.deleteMany({ where: { bookingId: { in: bookingIds } } }),
+                prisma.review.deleteMany({ where: { bookingId: { in: bookingIds } } }),
+                prisma.payment.deleteMany({ where: { bookingId: { in: bookingIds } } }),
+                prisma.booking.deleteMany({ where: { serviceId } }),
+            ]);
+        }
+
+        // Step 3: Delete service images from Cloudinary, then from DB, then delete service
+        for (const img of existing.images) await deleteImage(img.publicId);
+        await prisma.serviceImage.deleteMany({ where: { serviceId } });
         await prisma.service.delete({ where: { id: serviceId } });
+
         sendSuccess(res, null, "Service deleted");
     },
 );
