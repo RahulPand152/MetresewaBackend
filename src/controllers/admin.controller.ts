@@ -507,7 +507,8 @@ export const toggleService = asyncHandler(
 // ── Assign Technician ────────────────────────────────────────────────
 export const assignTechnician = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
-        const { bookingId, technicianId } = req.body;
+        const bookingId = req.params.bookingId || req.body.bookingId;
+        const { technicianId } = req.body;
 
         const booking = await prisma.booking.findUnique({
             where: { id: bookingId },
@@ -516,10 +517,6 @@ export const assignTechnician = asyncHandler(
 
         if (!booking) {
             throw new AppError("Booking not found", 404, true, "NOT_FOUND");
-        }
-
-        if (booking.status !== "PENDING") {
-            throw new AppError("Booking is not in PENDING status", 400, true, "INVALID_STATUS");
         }
 
         const technician = await prisma.technician.findUnique({
@@ -705,6 +702,33 @@ export const getAllBookings = asyncHandler(
         sendPaginated(res, bookings, total, page, limit, "Bookings retrieved");
     },
 );
+
+export const getAdminBookingById = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const bookingId = req.params.bookingId as string;
+        const booking = await prisma.booking.findUnique({
+            where: { id: bookingId },
+            include: {
+                user: { select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true, address: true } },
+                service: { include: { images: true, category: { select: { id: true, name: true } } } },
+                technicians: {
+                    include: {
+                        user: { select: { firstName: true, lastName: true, phoneNumber: true, email: true } },
+                    },
+                },
+                payment: true,
+                reviews: true
+            },
+        });
+        
+        if (!booking) {
+            throw new AppError("Booking not found", 404, true, "NOT_FOUND");
+        }
+        
+        sendSuccess(res, booking, "Booking retrieved");
+    }
+);
+
 
 // ── Get All Payments ─────────────────────────────────────────────────
 export const getAllPayments = asyncHandler(

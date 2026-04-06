@@ -15,6 +15,7 @@ router.put("/profile", validate(updateTechnicianProfileSchema), technicianContro
 router.patch("/availability", technicianController.toggleAvailability);
 
 router.get("/bookings", technicianController.getAssignedBookings);
+router.get("/bookings/:bookingId", technicianController.getAssignedBookingById);
 router.patch("/bookings/:bookingId/accept", technicianController.acceptJob);
 router.patch("/bookings/:bookingId/complete", technicianController.completeJob);
 

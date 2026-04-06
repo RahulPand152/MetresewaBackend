@@ -19,6 +19,9 @@ export const getProfile = asyncHandler(
                 avatar: true,
                 role: true,
                 createdAt: true,
+                technician: {
+                    select: { rating: true, experience: true }
+                }
             },
         });
 
@@ -45,6 +48,9 @@ export const updateProfile = asyncHandler(
                 avatar: true,
                 role: true,
                 updatedAt: true,
+                technician: {
+                    select: { rating: true, experience: true }
+                }
             },
         });
         sendSuccess(res, user, "Profile updated");
@@ -109,7 +115,7 @@ export const getMyBookings = asyncHandler(
                 },
                 technicians: {
                     include: {
-                        user: { select: { firstName: true, lastName: true } },
+                        user: { select: { firstName: true, lastName: true, phoneNumber: true, avatar: true } },
                     },
                 },
                 payment: true,
