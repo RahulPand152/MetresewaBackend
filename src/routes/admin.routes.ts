@@ -98,6 +98,16 @@ router.delete("/services/:serviceId", adminController.deleteService);
 
 // ── Bookings ──────────────────────────────────────────────────────────
 router.get("/bookings", adminController.getAllBookings);
+router.get("/bookings/:bookingId", adminController.getAdminBookingById);
+router.post(
+    "/bookings/:bookingId/assign",
+    (req, res, next) => {
+        req.body.bookingId = req.params.bookingId;
+        next();
+    },
+    validate(assignTechnicianSchema),
+    adminController.assignTechnician
+);
 router.patch("/bookings/:bookingId/status", validate(updateBookingStatusSchema), adminController.updateBookingStatus);
 
 // ── Payments ──────────────────────────────────────────────────────────

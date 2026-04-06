@@ -107,6 +107,42 @@ export const getAssignedBookings = asyncHandler(
     },
 );
 
+// ── Get Single Assigned Booking ───────────────────────────────────────
+export const getAssignedBookingById = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const userId = req.user!.id;
+        const bookingId = req.params.bookingId as string;
+        const technician = await prisma.technician.findUnique({ where: { userId } });
+        if (!technician) throw new AppError("Technician profile not found", 404, true, "NOT_FOUND");
+
+        const booking = await prisma.booking.findFirst({
+            where: {
+                id: bookingId,
+                technicians: { some: { id: technician.id } },
+            },
+            include: {
+                service: {
+                    include: { category: { select: { id: true, name: true } } },
+                },
+                user: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        phoneNumber: true,
+                        address: true,
+                        email: true,
+                    },
+                },
+                payment: true,
+            },
+        });
+
+        if (!booking) throw new AppError("Booking not found or not assigned to you", 404, true, "NOT_FOUND");
+        sendSuccess(res, booking, "Booking retrieved");
+    },
+);
+
 // ── Accept Job ───────────────────────────────────────────────────────
 export const acceptJob = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {

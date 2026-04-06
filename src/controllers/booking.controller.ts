@@ -26,6 +26,7 @@ export const createBooking = asyncHandler(
                 userId,
                 serviceId: data.serviceId,
                 description: data.description,
+                address: data.address,
                 scheduledDate: new Date(data.scheduledDate),
             },
             include: { service: true },

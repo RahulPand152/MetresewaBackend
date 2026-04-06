@@ -240,6 +240,7 @@ model Booking {
   serviceId       String
 
   description     String?
+  address         String?
   status          BookingStatus @default(PENDING)
 
   scheduledDate   DateTime

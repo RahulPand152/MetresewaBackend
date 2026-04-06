@@ -57,6 +57,7 @@ export const resetPasswordSchema = z.object({
 export const createBookingSchema = z.object({
     serviceId: z.string().min(1, "Invalid service ID"),
     description: z.string().optional(),
+    address: z.string().optional(),
     scheduledDate: z.string().datetime("Invalid date format").or(z.string()),
 });
 
