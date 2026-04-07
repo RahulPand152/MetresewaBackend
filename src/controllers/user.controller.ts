@@ -157,3 +157,14 @@ export const markNotificationRead = asyncHandler(
         sendSuccess(res, notification, "Notification marked as read");
     },
 );
+
+// ── Mark All Notifications Read ──────────────────────────────────────────
+export const markAllNotificationsRead = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const updated = await prisma.notification.updateMany({
+            where: { userId: req.user!.id, isRead: false },
+            data: { isRead: true },
+        });
+        sendSuccess(res, { count: updated.count }, "All notifications marked as read");
+    },
+);

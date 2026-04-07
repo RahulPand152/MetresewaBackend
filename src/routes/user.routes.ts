@@ -19,6 +19,7 @@ router.delete("/profile/image", userController.deleteProfileImage);
 router.get("/bookings", userController.getMyBookings);
 
 router.get("/notifications", userController.getMyNotifications);
+router.patch("/notifications/read-all", userController.markAllNotificationsRead);
 router.patch("/notifications/:notificationId/read", userController.markNotificationRead);
 
 export default router;

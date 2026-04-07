@@ -121,4 +121,7 @@ router.post(
     adminController.replyContact,
 );
 
+// ── Notifications ─────────────────────────────────────────────────────
+router.get("/notifications", adminController.getAdminNotifications);
+
 export default router;
