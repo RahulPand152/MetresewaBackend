@@ -19,4 +19,7 @@ router.get("/bookings/:bookingId", technicianController.getAssignedBookingById);
 router.patch("/bookings/:bookingId/accept", technicianController.acceptJob);
 router.patch("/bookings/:bookingId/complete", technicianController.completeJob);
 
+// ── Notifications ─────────────────────────────────────────────────────
+router.get("/notifications", technicianController.getTechnicianNotifications);
+
 export default router;

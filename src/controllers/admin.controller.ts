@@ -918,3 +918,96 @@ export const updateBookingStatus = asyncHandler(
     }
 );
 
+// ── Get Admin Notifications (unified: bookings, reviews, contacts, users, technicians) ─
+export const getAdminNotifications = asyncHandler(
+    async (_req: AuthRequest, res: Response, _next: NextFunction) => {
+        const [bookings, reviews, contacts, newUsers, newTechnicians] = await Promise.all([
+            // New PENDING bookings
+            prisma.booking.findMany({
+                where: { status: "PENDING" },
+                include: {
+                    service: { select: { name: true } },
+                    user: { select: { firstName: true, lastName: true } },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+            }),
+            // Recent reviews submitted
+            prisma.review.findMany({
+                include: {
+                    user: { select: { firstName: true, lastName: true } },
+                    booking: { include: { service: { select: { name: true } } } },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+            }),
+            // Unread contact/inquiry messages
+            prisma.contactMessage.findMany({
+                where: { status: "NEW" },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+            }),
+            // New user registrations (last 7 days)
+            prisma.user.findMany({
+                where: {
+                    role: "USER",
+                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+            }),
+            // Pending (unapproved) technician registrations
+            prisma.technician.findMany({
+                where: { isApproved: false },
+                include: { user: { select: { firstName: true, lastName: true } } },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+            }),
+        ]);
+
+        const notifications = [
+            ...bookings.map(b => ({
+                id: `booking-${b.id}`,
+                message: `📋 New booking: ${b.service?.name || "Service"} from ${b.user?.firstName || "Customer"} ${b.user?.lastName || ""}`.trim(),
+                type: "NEW_BOOKING",
+                isRead: false,
+                link: `/admin/bookings/${b.id}`,
+                createdAt: b.createdAt.toISOString(),
+            })),
+            ...reviews.map(r => ({
+                id: `review-${r.id}`,
+                message: `⭐ New ${r.rating}-star review from ${r.user?.firstName || "User"} on ${r.booking?.service?.name || "a service"}`,
+                type: "NEW_REVIEW",
+                isRead: false,
+                link: `/admin/bookings/${r.bookingId}`,
+                createdAt: r.createdAt.toISOString(),
+            })),
+            ...contacts.map(c => ({
+                id: `contact-${c.id}`,
+                message: `📩 User inquiry: "${c.title}" from ${c.fullName}`,
+                type: "USER_INQUIRY",
+                isRead: false,
+                link: `/admin/contacts`,
+                createdAt: c.createdAt.toISOString(),
+            })),
+            ...newUsers.map(u => ({
+                id: `user-${u.id}`,
+                message: `👤 New user registered: ${u.firstName} ${u.lastName}`,
+                type: "NEW_USER",
+                isRead: false,
+                link: `/admin/users`,
+                createdAt: u.createdAt.toISOString(),
+            })),
+            ...newTechnicians.map(t => ({
+                id: `tech-${t.id}`,
+                message: `🔧 Technician awaiting approval: ${t.user?.firstName || ""} ${t.user?.lastName || ""}`.trim(),
+                type: "NEW_TECHNICIAN",
+                isRead: false,
+                link: `/admin/technicians`,
+                createdAt: t.createdAt.toISOString(),
+            })),
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        sendSuccess(res, notifications, "Admin notifications retrieved");
+    },
+);

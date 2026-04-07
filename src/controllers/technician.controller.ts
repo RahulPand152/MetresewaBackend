@@ -208,3 +208,36 @@ export const completeJob = asyncHandler(
         sendSuccess(res, updated, "Job completed");
     },
 );
+
+// ── Get Technician Notifications (synthesized from newly ASSIGNED bookings) ───
+export const getTechnicianNotifications = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const userId = req.user!.id;
+        const technician = await prisma.technician.findUnique({ where: { userId } });
+        if (!technician) throw new AppError("Technician profile not found", 404, true, "NOT_FOUND");
+
+        const bookings = await prisma.booking.findMany({
+            where: {
+                technicians: { some: { id: technician.id } },
+                status: "ASSIGNED",
+            },
+            include: {
+                service: { select: { id: true, name: true } },
+                user: { select: { firstName: true, lastName: true } },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 20,
+        });
+
+        const notifications = bookings.map(b => ({
+            id: b.id,
+            message: `New job assigned: ${b.service?.name || "Service"} for ${b.user?.firstName || "Customer"}`,
+            type: "NEW_JOB",
+            isRead: false,
+            link: `/technican/my-jobs/${b.id}`,
+            createdAt: b.updatedAt,
+        }));
+
+        sendSuccess(res, notifications, "Technician notifications retrieved");
+    },
+);
