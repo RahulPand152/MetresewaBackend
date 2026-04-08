@@ -922,15 +922,14 @@ export const updateBookingStatus = asyncHandler(
 export const getAdminNotifications = asyncHandler(
     async (_req: AuthRequest, res: Response, _next: NextFunction) => {
         const [bookings, reviews, contacts, newUsers, newTechnicians] = await Promise.all([
-            // New PENDING bookings
+            // Recent bookings (to show new, assigned, in-progress, completed, cancelled)
             prisma.booking.findMany({
-                where: { status: "PENDING" },
                 include: {
                     service: { select: { name: true } },
                     user: { select: { firstName: true, lastName: true } },
                 },
-                orderBy: { createdAt: "desc" },
-                take: 10,
+                orderBy: { updatedAt: "desc" },
+                take: 15,
             }),
             // Recent reviews submitted
             prisma.review.findMany({
@@ -966,14 +965,35 @@ export const getAdminNotifications = asyncHandler(
         ]);
 
         const notifications = [
-            ...bookings.map(b => ({
-                id: `booking-${b.id}`,
-                message: `📋 New booking: ${b.service?.name || "Service"} from ${b.user?.firstName || "Customer"} ${b.user?.lastName || ""}`.trim(),
-                type: "NEW_BOOKING",
-                isRead: false,
-                link: `/admin/bookings/${b.id}`,
-                createdAt: b.createdAt.toISOString(),
-            })),
+            ...bookings.map(b => {
+                let message = "";
+                let type = "NEW_BOOKING";
+                
+                if (b.status === "PENDING") {
+                    message = `📋 New booking: ${b.service?.name || "Service"} from ${b.user?.firstName || "Customer"} ${b.user?.lastName || ""}`.trim();
+                } else if (b.status === "ASSIGNED") {
+                    message = `👨‍🔧 Booking assigned: ${b.service?.name || "Service"} for ${b.user?.firstName || "Customer"}`;
+                    type = "BOOKING_UPDATE";
+                } else if (b.status === "IN_PROGRESS") {
+                    message = `⚙️ Booking in-progress: ${b.service?.name || "Service"} for ${b.user?.firstName || "Customer"}`;
+                    type = "BOOKING_UPDATE";
+                } else if (b.status === "COMPLETED") {
+                    message = `✅ Booking completed: ${b.service?.name || "Service"} for ${b.user?.firstName || "Customer"}`;
+                    type = "BOOKING_UPDATE";
+                } else if (b.status === "CANCELLED") {
+                    message = `❌ Booking cancelled: ${b.service?.name || "Service"} for ${b.user?.firstName || "Customer"}`;
+                    type = "BOOKING_UPDATE";
+                }
+
+                return {
+                    id: `booking-${b.status}-${b.id}`,
+                    message,
+                    type,
+                    isRead: false,
+                    link: `/admin/bookings/${b.id}`,
+                    createdAt: b.updatedAt.toISOString(),
+                };
+            }),
             ...reviews.map(r => ({
                 id: `review-${r.id}`,
                 message: `⭐ New ${r.rating}-star review from ${r.user?.firstName || "User"} on ${r.booking?.service?.name || "a service"}`,
