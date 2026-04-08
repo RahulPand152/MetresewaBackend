@@ -182,11 +182,11 @@ export const verifyKhaltiPayment = asyncHandler(
                     });
                 }
 
-                // Update booking status to CONFIRMED
-                await prisma.booking.update({
-                    where: { id: booking.id },
-                    data: { status: "ASSIGNED" }, // ASSIGNED is roughly "CONFIRMED" per enum
-                });
+                // We keep the booking status as PENDING (default) until an admin actually assigns a technician.
+                // await prisma.booking.update({
+                //     where: { id: booking.id },
+                //     data: { status: "ASSIGNED" }, 
+                // });
 
                 // Create success notification
                 await prisma.notification.create({
@@ -306,21 +306,21 @@ export const confirmCOD = asyncHandler(
             });
         }
 
-        // Update booking status to Confirmed/ASSIGNED so we know they committed
-        const updatedBooking = await prisma.booking.update({
-            where: { id: booking.id },
-            data: { status: "ASSIGNED" },
-        });
+        // We keep the booking status as PENDING until assigned by admin
+        // const updatedBooking = await prisma.booking.update({
+        //     where: { id: booking.id },
+        //     data: { status: "ASSIGNED" },
+        // });
 
         // Create success notification
         await prisma.notification.create({
             data: {
                 userId: req.user!.id,
-                type: "BOOKING_ASSIGNED",
+                type: "BOOKING_CREATED",
                 message: `Booking for ${booking.service.name} confirmed with Cash on Delivery.`,
             },
         });
 
-        sendSuccess(res, updatedBooking, "Booking confirmed with Cash on Delivery", 200);
+        sendSuccess(res, booking, "Booking confirmed with Cash on Delivery", 200);
     }
 );
