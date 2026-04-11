@@ -41,7 +41,8 @@ export const initiateKhaltiPayment = asyncHandler(
         }
 
         // Calculate amount in paisa (Khalti minimum is Rs 10 = 1000 paisa)
-        const priceNPR = booking.service.price || 10;
+        const quantity = (booking as any).quantity || 1;
+        const priceNPR = (booking.service.price || 10) * quantity;
         const amountInPaisa = Math.max(Math.round(priceNPR * 100), 1000);
 
         // Build the Khalti ePayment initiate payload
@@ -169,7 +170,8 @@ export const verifyKhaltiPayment = asyncHandler(
                     });
                 } else {
                     // Create new payment record if none exists
-                    const priceNPR = booking.service.price || 10;
+                    const quantity = (booking as any).quantity || 1;
+                    const priceNPR = (booking.service.price || 10) * quantity;
                     payment = await prisma.payment.create({
                         data: {
                             bookingId: booking.id,
@@ -292,7 +294,8 @@ export const confirmCOD = asyncHandler(
                 }
             });
         } else {
-            const priceNPR = booking.service.price || 10;
+            const quantity = (booking as any).quantity || 1;
+            const priceNPR = (booking.service.price || 10) * quantity;
             // Create pending COD payment
             await prisma.payment.create({
                 data: {
@@ -322,5 +325,174 @@ export const confirmCOD = asyncHandler(
         });
 
         sendSuccess(res, booking, "Booking confirmed with Cash on Delivery", 200);
+    }
+);
+
+// ── Batch Payment Initiations ───────────────────────────────────────────────
+
+export const initiateBatchPayment = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { bookingIds, return_url, website_url, customer_info } = req.body;
+
+        if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+            throw new AppError("bookingIds array is required", 400, true, "VALIDATION_FAILED");
+        }
+
+        const bookings = await prisma.booking.findMany({
+            where: { id: { in: bookingIds }, userId: req.user!.id },
+            include: { service: true },
+        });
+
+        if (bookings.length !== bookingIds.length) {
+            throw new AppError("Some bookings were not found or unauthorized", 404, true, "NOT_FOUND");
+        }
+
+        let totalAmountNPR = 0;
+        bookings.forEach(b => {
+             const quantity = (b as any).quantity || 1;
+             totalAmountNPR += (b.service.price || 10) * quantity;
+        });
+
+        const amountInPaisa = Math.max(Math.round(totalAmountNPR * 100), 1000);
+
+        const khaltiPayload = {
+            return_url: return_url || "http://localhost:3000/cart",
+            website_url: website_url || "http://localhost:3000",
+            amount: amountInPaisa,
+            purchase_order_id: bookingIds[0], // Using the first ID as representative
+            purchase_order_name: "MetroSewa Batch Service",
+            customer_info: customer_info || {
+                name: "Customer",
+                email: "customer@metrosewa.com",
+                phone: "9800000000",
+            },
+        };
+
+        try {
+            const khaltiResponse = await axios.post(
+                `${KHALTI_BASE_URL}/epayment/initiate/`,
+                khaltiPayload,
+                {
+                    headers: {
+                        Authorization: `Key ${KHALTI_SECRET_KEY}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            const { pidx, payment_url, expires_at, expires_in } = khaltiResponse.data;
+
+            // Generate payments for ALL bookings sharing the pidx
+            for (const b of bookings) {
+                const bQuantity = (b as any).quantity || 1;
+                const bPrice = (b.service.price || 10) * bQuantity;
+                
+                await prisma.payment.create({
+                    data: {
+                        bookingId: b.id,
+                        userId: req.user!.id,
+                        amount: bPrice,
+                        status: "PENDING",
+                        paymentMethod: "KHALTI",
+                        transactionId: pidx,
+                    },
+                });
+            }
+
+            sendSuccess(res, {
+                pidx,
+                payment_url,
+                expires_at,
+                expires_in,
+                amount: amountInPaisa,
+                amountNPR: totalAmountNPR,
+            }, "Khalti batch payment initiated", 200);
+
+        } catch (error: any) {
+            console.error("Khalti batch initiate error:", error.response?.data || error.message);
+            throw new AppError("Failed to initiate batch Khalti payment", 400, true, "KHALTI_INITIATE_FAILED");
+        }
+    }
+);
+
+export const verifyBatchPayment = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { pidx } = req.body;
+
+        if (!pidx) {
+            throw new AppError("pidx is required for batch verification", 400, true, "VALIDATION_FAILED");
+        }
+
+        try {
+            const lookupResponse = await axios.post(
+                `${KHALTI_BASE_URL}/epayment/lookup/`,
+                { pidx },
+                {
+                    headers: {
+                        Authorization: `Key ${KHALTI_SECRET_KEY}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            const result = lookupResponse.data;
+
+            if (result.status === "Completed") {
+                // Update all payments that possess this transactionId
+                const updatedPayments = await prisma.payment.updateMany({
+                    where: { transactionId: pidx, userId: req.user!.id, status: "PENDING" },
+                    data: { status: "PAID", transactionId: result.transaction_id || pidx }
+                });
+
+                await prisma.notification.create({
+                    data: {
+                        userId: req.user!.id,
+                        type: "PAYMENT_SUCCESS",
+                        message: `Payment of total NPR ${result.total_amount / 100} successful for batch.`,
+                    },
+                });
+
+                sendSuccess(res, { khaltiStatus: result.status, matchedRecords: updatedPayments.count }, "Batch payment verified", 200);
+            } else {
+                throw new AppError(`Payment not completed. Status: ${result.status}`, 400, true, "PAYMENT_NOT_COMPLETED");
+            }
+        } catch (error: any) {
+             if (error instanceof AppError) throw error;
+             throw new AppError("Payment batch verification failed", 400, true, "KHALTI_LOOKUP_FAILED");
+        }
+    }
+);
+
+export const confirmBatchCOD = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const { bookingIds } = req.body;
+
+        if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+            throw new AppError("bookingIds array is required", 400, true, "VALIDATION_FAILED");
+        }
+
+        const bookings = await prisma.booking.findMany({
+            where: { id: { in: bookingIds }, userId: req.user!.id },
+            include: { service: true },
+        });
+
+        const txId = `COD-${Date.now()}`;
+
+        for (const b of bookings) {
+            const bQuantity = (b as any).quantity || 1;
+            const bPrice = (b.service.price || 10) * bQuantity;
+            await prisma.payment.create({
+                data: {
+                    bookingId: b.id,
+                    userId: req.user!.id,
+                    amount: bPrice,
+                    status: "PENDING",
+                    paymentMethod: "COD",
+                    transactionId: txId,
+                },
+            });
+        }
+
+        sendSuccess(res, { count: bookings.length }, "Batch COD successfully set", 200);
     }
 );

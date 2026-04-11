@@ -27,8 +27,9 @@ export const createBooking = asyncHandler(
                 serviceId: data.serviceId,
                 description: data.description,
                 address: data.address,
+                quantity: data.quantity ? Number(data.quantity) : 1,
                 scheduledDate: new Date(data.scheduledDate),
-            },
+            } as any,
             include: { service: true },
         });
 
@@ -53,6 +54,72 @@ export const createBooking = asyncHandler(
         }
 
         sendSuccess(res, booking, "Booking created", 201);
+    },
+);
+
+// ── Create Batch Bookings ────────────────────────────────────────────
+export const createBatchBookings = asyncHandler(
+    async (req: AuthRequest, res: Response, _next: NextFunction) => {
+        const userId = req.user!.id;
+        // Expected payload: { items: {serviceId, quantity}[], description, address, scheduledDate }
+        const { items, description, address, scheduledDate } = req.body;
+
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new AppError("No items provided", 400, true, "VALIDATION_ERROR");
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, firstName: true },
+        });
+
+        const createdBookings = [];
+
+        // We run in a transaction or loop. For simplicity, just loop sequentially to handle errors clearly
+        for (const item of items) {
+            const service = await prisma.service.findUnique({ where: { id: item.serviceId } });
+            if (!service) continue; // Skip invalid services
+
+            const booking = await prisma.booking.create({
+                data: {
+                    userId,
+                    serviceId: service.id,
+                    description,
+                    address,
+                    quantity: item.quantity ? Number(item.quantity) : 1,
+                    scheduledDate: new Date(scheduledDate),
+                } as any,
+                include: { service: true },
+            });
+
+            createdBookings.push(booking);
+
+            // Create notification per item
+            await prisma.notification.create({
+                data: {
+                    userId,
+                    type: "BOOKING_CREATED",
+                    message: `Your booking for ${service.name} has been created`,
+                },
+            });
+
+            // Send confirmation email per item
+            if (user) {
+                sendBookingConfirmation(
+                    user.email,
+                    user.firstName,
+                    service.name,
+                    booking.scheduledDate.toISOString(),
+                    booking.id,
+                );
+            }
+        }
+
+        if (createdBookings.length === 0) {
+            throw new AppError("Failed to create any bookings due to invalid services.", 400, true, "VALIDATION_ERROR");
+        }
+
+        sendSuccess(res, createdBookings, "Batch bookings created", 201);
     },
 );
 

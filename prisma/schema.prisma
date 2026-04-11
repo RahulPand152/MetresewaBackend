@@ -241,6 +241,7 @@ model Booking {
 
   description     String?
   address         String?
+  quantity        Int      @default(1)
   status          BookingStatus @default(PENDING)
 
   scheduledDate   DateTime

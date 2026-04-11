@@ -720,11 +720,11 @@ export const getAdminBookingById = asyncHandler(
                 reviews: true
             },
         });
-        
+
         if (!booking) {
             throw new AppError("Booking not found", 404, true, "NOT_FOUND");
         }
-        
+
         sendSuccess(res, booking, "Booking retrieved");
     }
 );
@@ -903,7 +903,7 @@ export const getAnalytics = asyncHandler(
 // -- Update Booking Status ---------------------------------------------
 export const updateBookingStatus = asyncHandler(
     async (req: AuthRequest, res: Response, _next: NextFunction) => {
-          const bookingId = req.params.bookingId as string;
+        const bookingId = req.params.bookingId as string;
         const { status } = req.body;
 
         const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
@@ -968,7 +968,7 @@ export const getAdminNotifications = asyncHandler(
             ...bookings.map(b => {
                 let message = "";
                 let type = "NEW_BOOKING";
-                
+
                 if (b.status === "PENDING") {
                     message = `📋 New booking: ${b.service?.name || "Service"} from ${b.user?.firstName || "Customer"} ${b.user?.lastName || ""}`.trim();
                 } else if (b.status === "ASSIGNED") {
@@ -1007,7 +1007,7 @@ export const getAdminNotifications = asyncHandler(
                 message: `📩 User inquiry: "${c.title}" from ${c.fullName}`,
                 type: "USER_INQUIRY",
                 isRead: false,
-                link: `/admin/contacts`,
+                link: `/admin/inquiries`,
                 createdAt: c.createdAt.toISOString(),
             })),
             ...newUsers.map(u => ({
