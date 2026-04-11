@@ -4,7 +4,10 @@ import {
     initiateKhaltiPayment,
     verifyKhaltiPayment,
     getPaymentDetails,
-    confirmCOD
+    confirmCOD,
+    initiateBatchPayment,
+    verifyBatchPayment,
+    confirmBatchCOD
 } from "../controllers/payment.controller.js";
 
 const router = Router();
@@ -16,6 +19,10 @@ router.use(authenticate);
 router.post("/initiate", initiateKhaltiPayment);
 router.post("/verify", verifyKhaltiPayment);
 router.post("/cod", confirmCOD);
+
+router.post("/initiate-batch", initiateBatchPayment);
+router.post("/verify-batch", verifyBatchPayment);
+router.post("/cod-batch", confirmBatchCOD);
 
 // Get payment details by ID
 router.get("/:id", getPaymentDetails);

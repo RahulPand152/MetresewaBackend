@@ -11,6 +11,7 @@ router.use(authenticate);
 router.use(authorize("USER"));
 
 router.post("/", validate(createBookingSchema), bookingController.createBooking);
+router.post("/batch", bookingController.createBatchBookings);
 router.get("/", bookingController.getUserBookings);
 router.get("/:bookingId", bookingController.getBooking);
 router.patch("/:bookingId/cancel", bookingController.cancelBooking);
