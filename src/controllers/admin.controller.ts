@@ -813,7 +813,12 @@ export const getDashboardStats = asyncHandler(
             prisma.booking.count({ where: { status: "COMPLETED" } }),
             prisma.payment.aggregate({
                 _sum: { amount: true },
-                where: { status: "PAID" },
+                where: {
+                    OR: [
+                        { status: "PAID" },
+                        { booking: { status: "COMPLETED" } }
+                    ]
+                },
             }),
             prisma.category.count(),
             prisma.service.count(),
@@ -861,7 +866,13 @@ export const getAnalytics = asyncHandler(
                 select: { createdAt: true },
             }),
             prisma.payment.findMany({
-                where: { createdAt: { gte: sixMonthsAgo }, status: "PAID" },
+                where: {
+                    createdAt: { gte: sixMonthsAgo },
+                    OR: [
+                        { status: "PAID" },
+                        { booking: { status: "COMPLETED" } }
+                    ]
+                },
                 select: { createdAt: true, amount: true },
             }),
         ]);
